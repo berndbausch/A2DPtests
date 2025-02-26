@@ -27,12 +27,15 @@ struct sound {
   float frequency;
 };
 
+// The frequencies for octave 0
 //                 0=C      1=C#    2=D     3=D#    4=E     5=F    6=F#     7=G    8=G#     9=A    10=A#    11=B
-float freq3[] = { 130.81, 138.59, 146.83, 155.56, 164.81, 174.61, 184.99, 195.99, 207.64, 219.99, 233.07, 246.93 };
-float freq4[] = { 261.61, 277.17, 293.65, 311.11, 329.61, 349.20, 369.97, 391.97, 415.27, 439.96, 466.12, 493.84 };
+float freq[] =  { 16.35,	 17.32,  18.35,  19.45,	 20.6,	21.83,	23.12,	24.5,	 25.96,	   27.5,	 29.14, 	30.87 };
 
-struct sound octave3[12];
-struct sound octave4[12];
+// 12 notes for octave 0
+// Notes for higher octaves are created when playing, by changing the step through the samples.
+// oct 0 step 1,     oct 1 step 2,      oct 2 step 4   etc.
+struct sound notes[12];
+
 int note_to_play = -1;
 
 /**********************  Create the waveforms  *****************************/
@@ -51,34 +54,27 @@ void make_frame(Frame *frame, int nsamples, float frequency) {
     frame[sample].channel1 = m_amplitude * sin(angle);
     frame[sample].channel2 = frame[sample].channel1;
     m_time += m_deltatime;
-    /*if (angle>=pi_2) 
-      return;*/
   }
 }
 
+// This function generates the samples and other information for the 12 notes in octave 0
 void setup_sounds() {
   char out[256];
+  static int totalbytes = 0;
 
-  Serial.println("************* octave 3:");
+  Serial.println("************* notes:");
   for (int i=0; i<12; i++) {
-    octave3[i].frequency = freq3[i];
-    octave3[i].currsample = 0;
-    octave3[i].nsamples = int(44100.0/octave3[i].frequency) + 1;
-    octave3[i].frame = (Frame *)malloc(sizeof(Frame)*octave3[i].nsamples);
-    make_frame(octave3[i].frame, octave3[i].nsamples, octave3[i].frequency);
-    sprintf(out, "i %d: F %f, ns %d, frame 0x%x; ", i, octave3[i].frequency, octave3[i].nsamples, octave3[i].frame);
-    Serial.print(out);
-  }
-  Serial.println();
+    int nbytes;
 
-  Serial.println("************* octave 4:");
-  for (int i=0; i<12; i++) {
-    octave4[i].frequency = freq4[i];
-    octave4[i].currsample = 0;
-    octave4[i].nsamples = int(44100.0/octave4[i].frequency) + 1;
-    octave4[i].frame = (Frame *)malloc(sizeof(Frame)*octave4[i].nsamples);
-    make_frame(octave4[i].frame, octave4[i].nsamples, octave4[i].frequency);
-    sprintf(out, "F %f, ns %d, frame 0x%x; ", octave4[i].frequency, octave4[i].nsamples, octave4[i].frame);
+    notes[i].frequency = freq[i];
+    notes[i].currsample = 0;
+    notes[i].nsamples = int(44100.0/notes[i].frequency) + 1;
+    nbytes = sizeof(Frame)*notes[i].nsamples;
+    totalbytes += nbytes;
+    notes[i].frame = (Frame *)malloc(nbytes);
+    make_frame(notes[i].frame, notes[i].nsamples, notes[i].frequency);
+    sprintf(out, "i %d: F %f, ns %d, frame 0x%x, nbytes %d, totalbytes %d\n", 
+                  i, notes[i].frequency, notes[i].nsamples, notes[i].frame, nbytes, totalbytes);
     Serial.print(out);
   }
   Serial.println();
@@ -122,13 +118,14 @@ int32_t get_data_frames(Frame *frame, int32_t framecount) {
   int f;
   int n = note_to_play;
   static int lastnote = -1;
+  static int prevnote = -1; // prevnote will be completed before the next note is played
   static struct sound *note = NULL;
   
   if (n>=0 && n<12) {
 
     if (note==NULL) {
       lastnote = n;
-      note = &octave3[n];
+      note = &notes[n];
     }
     
     for (f = 0; f < framecount; f++) {
@@ -142,13 +139,13 @@ int32_t get_data_frames(Frame *frame, int32_t framecount) {
           lastnote = n;
           sprintf(out, "new note n=%d, frame_count %d, currsample %d, nsamples %d", n, framecount, note->currsample, note->nsamples);
           Serial.println(out);
-          note = &octave3[n];
+          note = &notes[n];
         }
         note->currsample = 0;
       }
 
       frame[f] = note->frame[note->currsample];
-      note->currsample++;
+      note->currsample+=8;   // step 8 for octave 3
     }
   }
   else // n is out of range. Do nothing.
