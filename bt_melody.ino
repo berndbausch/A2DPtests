@@ -122,29 +122,37 @@ int32_t get_data_frames(Frame *frame, int32_t framecount) {
   int f;
   int n = note_to_play;
   static int lastnote = -1;
-
-  if (n>=0 && n<12) {
-    struct sound *note = &octave3[n];
-
-    if (n!=lastnote) {
-      /*
-       * TODO:
-       * Allow the previous note to complete until its last sample
-       */
-      lastnote = n;
-      note->currsample = 0; // This is a new note. Ensure we start at the first sample.
-      sprintf(out, "n %d, frame_count %d, currsample %d, nsamples %d", n, framecount, note->currsample, note->nsamples);
-      Serial.println(out);
-    }
+  static struct sound *note = NULL;
   
+  if (n>=0 && n<12) {
+
+    if (note==NULL) {
+      lastnote = n;
+      note = &octave3[n];
+    }
+    
     for (f = 0; f < framecount; f++) {
-      if (note->currsample >= note->nsamples) // wrap around
+      
+      if (note->currsample >= note->nsamples) {  
+        // we are at the end of the waveform
+        // switch to a new note if necessary
+        // set current sample number to 0
+        
+        if (n!=lastnote) {   // need to switch to different note
+          lastnote = n;
+          sprintf(out, "new note n=%d, frame_count %d, currsample %d, nsamples %d", n, framecount, note->currsample, note->nsamples);
+          Serial.println(out);
+          note = &octave3[n];
+        }
         note->currsample = 0;
+      }
+
       frame[f] = note->frame[note->currsample];
       note->currsample++;
     }
   }
-  else
+  else // n is out of range. Do nothing.
+
     // to prevent watchdog in release > 1.0.6
     delay(1);
   
@@ -179,7 +187,7 @@ void setup() {
   // Set up the connection and data callbacks
   a2dp_source.set_on_connection_state_changed(connection_state_changed);
   a2dp_source.set_data_callback_in_frames(get_data_frames);
-  
+
   a2dp_source.set_volume(30);
   a2dp_source.start(DEVICE);   
 }
