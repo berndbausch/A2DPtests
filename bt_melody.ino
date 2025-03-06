@@ -21,7 +21,7 @@
 #define DEVICE "H800 Logico"
 
 AudioInfo info(44100, 2, 16);
-SineWaveGenerator<int16_t> waveForm(32000);      // subclass of SoundGenerator with max amplitude of 32000
+SawToothGenerator<int16_t> waveForm(32000);      // subclass of SoundGenerator with max amplitude of 32000
 GeneratedSoundStream<int16_t> input(waveForm);      // Stream takes a generator as parameter
 
 /****************************  Bluetooth stuff starts here ****************************/
@@ -68,9 +68,6 @@ void setup() {
 
   Serial.begin(115200);
 
-  //Serial.println("**************************** Waiting three seconds...");
-  //delay(3000);
-
 /**********************  Audio setup: Generator and stream  **************************/
   //AudioToolsLogger.begin(Serial, AudioToolsLogLevel::Info);
 
@@ -94,20 +91,26 @@ void setup() {
   a2dp_source.start(DEVICE);   
 }
 
-/*************  loop() ramps the frequency up and down continuously  *************/
-int lastmillis = 0;
-float frequency = 400.0;
-float deltafreq = 0.3;
+/****************  loop() slides the frequency up and down  *******************/
+#define MINFREQ 250.0    // Frequency varies between
+#define MAXFREQ 500.0    // MINFREQ and MAXFREQ
+int lastmillis = 0;      // last time frequency was modified
+float frequency = MINFREQ;  // current frequency
+float deltafreq = 0.3;      // frequency is modified by this value
 void loop() {
   int currmillis;
   if (conn_state==ESP_A2D_CONNECTION_STATE_CONNECTED) {
+    
+    // vary the frequency every 10 milliseconds
     currmillis = millis();
     if (currmillis-lastmillis>10) {
       char out[256];
 
       lastmillis = currmillis;
       frequency += deltafreq;
-      if (frequency>500.0 || frequency<400.0)
+
+      // when outside the configured frequency band, reverse the delta
+      if (frequency>MAXFREQ || frequency<MINFREQ)
         deltafreq = -deltafreq;
       waveForm.setFrequency(frequency);
       sprintf(out,"freq %.0f, delta %.0f, lastmillis %d", frequency, deltafreq, lastmillis);
