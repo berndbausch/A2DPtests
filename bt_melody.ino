@@ -21,8 +21,13 @@
 #define DEVICE "H800 Logico"
 
 AudioInfo info(44100, 2, 16);
-SawToothGenerator<int16_t> waveForm(32000);      // subclass of SoundGenerator with max amplitude of 32000
-GeneratedSoundStream<int16_t> input(waveForm);      // Stream takes a generator as parameter
+
+// Defining two generators, two streams, and a mixer
+SawToothGenerator<int16_t> waveForm1(32000);      // subclass of SoundGenerator with max amplitude of 32000
+SawToothGenerator<int16_t> waveForm2(32000);
+GeneratedSoundStream<int16_t> input1(waveForm1);   // Stream takes a generator as parameter
+GeneratedSoundStream<int16_t> input2(waveForm2);   // Stream takes a generator as parameter
+InputMixer<int16_t> mixer;
 
 /****************************  Bluetooth stuff starts here ****************************/
 BluetoothA2DPSource a2dp_source;
@@ -43,7 +48,7 @@ int32_t get_data_frames(uint8_t *frame, int32_t framecount) {
     
   frameptr = frame;
   do {
-    size_t n = input.readBytes(frameptr, framecount);
+    size_t n = mixer.readBytes(frameptr, framecount);
     frameptr += n;
     nread += n;
   }
@@ -61,6 +66,9 @@ void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
 
 /****************************  End of Bluetooth stuff  *******************************/
 
+#define MINFREQ 250.0    // Frequency varies between
+#define MAXFREQ 500.0    // MINFREQ and MAXFREQ
+
 /****************  setup(): Configure callbacks for connection state and data, 
                    set volume and connect to device                         **********/
 void setup() {
@@ -72,10 +80,16 @@ void setup() {
   //AudioToolsLogger.begin(Serial, AudioToolsLogLevel::Info);
 
   // Setup wave form
-  // Activate the stream with the AudioInfo defined above: 44kHz, 2 channels, 16 bit samples
-  input.begin(info);
-  // Generate a sound wave with the same AudioInfo and the frequency of B4 
-  waveForm.begin(info, 440.0); 
+  // Activate the streams with the AudioInfo defined above: 44kHz, 2 channels, 16 bit samples
+  input1.begin(info);
+  input2.begin(info);
+  // Generate sound waves with the same AudioInfo 
+  waveForm1.begin(info, MINFREQ); 
+  waveForm1.begin(info, MAXFREQ); 
+  // feed the streams into the mixer
+  mixer.add(input1);
+  mixer.add(input2);
+  mixer.begin(info);
 
 /*********  Bluetooth setup: Callbacks for connection state change and data,  **********/
 /*********                   define volume and launch the connection process  **********/
@@ -92,11 +106,11 @@ void setup() {
 }
 
 /****************  loop() slides the frequency up and down  *******************/
-#define MINFREQ 250.0    // Frequency varies between
-#define MAXFREQ 500.0    // MINFREQ and MAXFREQ
 int lastmillis = 0;      // last time frequency was modified
-float frequency = MINFREQ;  // current frequency
-float deltafreq = 0.3;      // frequency is modified by this value
+float frequency1 = MINFREQ;  // current frequency
+float deltafreq1 = 0.3;      // frequency is modified by this value
+float frequency2 = MAXFREQ; 
+float deltafreq2 = -0.2;
 void loop() {
   int currmillis;
   if (conn_state==ESP_A2D_CONNECTION_STATE_CONNECTED) {
@@ -107,13 +121,19 @@ void loop() {
       char out[256];
 
       lastmillis = currmillis;
-      frequency += deltafreq;
+      frequency1 += deltafreq1;
+      frequency2 += deltafreq2;
 
       // when outside the configured frequency band, reverse the delta
-      if (frequency>MAXFREQ || frequency<MINFREQ)
-        deltafreq = -deltafreq;
-      waveForm.setFrequency(frequency);
-      sprintf(out,"freq %.0f, delta %.0f, lastmillis %d", frequency, deltafreq, lastmillis);
+      if (frequency1>MAXFREQ || frequency1<MINFREQ)
+        deltafreq1 = -deltafreq1;
+      waveForm1.setFrequency(frequency1);
+      if (frequency2>MAXFREQ || frequency2<MINFREQ)
+        deltafreq2 = -deltafreq2;
+      waveForm2.setFrequency(frequency2);
+
+      sprintf(out,"freq1 %.0f, delta1 %.0f, freq2 %.0f, delta2 %.0f, lastmillis %d", 
+                  frequency1, deltafreq1, frequency2, deltafreq2, lastmillis);
       Serial.println(out);
     }
   }
